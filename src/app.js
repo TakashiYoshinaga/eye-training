@@ -7,6 +7,9 @@ const LANE_Z_MIN = -1;
 const LANE_Z_MAX = -31;
 const LANES = [-2, 0, 2];
 const LANDOLT_DIAMETER = 0.075;
+const LANDOLT_RING_THICKNESS = 0.016;
+const LANDOLT_GAP_ANGLE = 0.9;
+const XR_FRAMEBUFFER_SCALE = 1.25;
 const TRAINING_SECONDS = 180;
 const DIRECTIONS = ["up", "right", "down", "left"];
 const KEY_TO_DIR = new Map([
@@ -56,6 +59,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
+renderer.xr.setFramebufferScaleFactor(XR_FRAMEBUFFER_SCALE);
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
@@ -205,10 +209,11 @@ function buildTargets() {
     group.userData.rim = rim;
 
     const landolt = new THREE.Mesh(
-      new THREE.PlaneGeometry(LANDOLT_DIAMETER, LANDOLT_DIAMETER),
-      new THREE.MeshBasicMaterial({ map: createLandoltTexture(group.userData.direction), transparent: true })
+      createLandoltGeometry(),
+      new THREE.MeshBasicMaterial({ color: 0x0a0d12, side: THREE.DoubleSide })
     );
-    landolt.position.z = 0.035;
+    landolt.position.z = 0.05;
+    landolt.rotation.z = directionToAngle(group.userData.direction);
     group.add(landolt);
     group.userData.landolt = landolt;
 
@@ -541,32 +546,23 @@ function updateBillboards() {
 }
 
 function updateLandolt(target) {
-  target.userData.landolt.material.map.dispose();
-  target.userData.landolt.material.map = createLandoltTexture(target.userData.direction);
-  target.userData.landolt.material.needsUpdate = true;
+  target.userData.landolt.rotation.z = directionToAngle(target.userData.direction);
 }
 
-function createLandoltTexture(direction) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1024;
-  canvas.height = 1024;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.translate(512, 512);
-  ctx.rotate(directionToAngle(direction));
-  ctx.strokeStyle = "#0a0d12";
-  ctx.lineWidth = 168;
-  ctx.lineCap = "butt";
-  ctx.beginPath();
-  ctx.arc(0, 0, 288, 0.62, Math.PI * 2 - 0.62, false);
-  ctx.stroke();
+function createLandoltGeometry() {
+  const outerRadius = LANDOLT_DIAMETER / 2;
+  const innerRadius = outerRadius - LANDOLT_RING_THICKNESS;
+  const start = LANDOLT_GAP_ANGLE / 2;
+  const end = Math.PI * 2 - LANDOLT_GAP_ANGLE / 2;
+  const shape = new THREE.Shape();
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.anisotropy = 8;
-  texture.generateMipmaps = false;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  return texture;
+  shape.moveTo(Math.cos(start) * outerRadius, Math.sin(start) * outerRadius);
+  shape.absarc(0, 0, outerRadius, start, end, false);
+  shape.lineTo(Math.cos(end) * innerRadius, Math.sin(end) * innerRadius);
+  shape.absarc(0, 0, innerRadius, end, start, true);
+  shape.closePath();
+
+  return new THREE.ShapeGeometry(shape, 96);
 }
 
 function makeTextSprite(text, options) {
