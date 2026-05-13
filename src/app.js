@@ -509,7 +509,14 @@ function updateAcuityLabel(target) {
 }
 
 function updateBillboards() {
-  targets.forEach((target) => target.quaternion.copy(camera.quaternion));
+  const cameraPosition = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+
+  targets.forEach((target) => {
+    const dx = cameraPosition.x - target.position.x;
+    const dz = cameraPosition.z - target.position.z;
+    target.rotation.set(0, Math.atan2(dx, dz), 0);
+  });
 }
 
 function updateLandolt(target) {
