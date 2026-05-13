@@ -2,6 +2,10 @@
 
 Meta Quest Browserで動かす、pure JavaScript + Three.jsのWebXR視力トレーニング実験アプリです。
 
+GitHub Pages:
+
+- https://takashiyoshinaga.github.io/eye-training/
+
 参考:
 
 - https://www.moguravr.com/vision-recovery-vr-game-research/
@@ -28,7 +32,7 @@ Desktop preview:
 http://localhost:5173/
 ```
 
-Meta QuestでVRとして起動する場合、WebXRにはHTTPSの安全なコンテキストが必要です。GitHub PagesなどのHTTPS配信先へこのリポジトリをそのまま置き、Quest BrowserでURLを開いてください。
+Meta QuestでVRとして起動する場合、WebXRにはHTTPSの安全なコンテキストが必要です。GitHub PagesのURLをQuest Browserで開いてください。
 
 ## Controls
 
