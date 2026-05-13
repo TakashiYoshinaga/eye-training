@@ -71,9 +71,11 @@ const rayDirection = new THREE.Vector3();
 const intersectables = [];
 const targets = [];
 const controllers = [];
+const actionButtons = [];
 let mouseAiming = false;
 let mouseNdc = new THREE.Vector2();
 let immersiveHud = null;
+let resultPanel = null;
 
 buildLighting();
 buildRoom();
@@ -158,6 +160,7 @@ function buildControllers() {
     controller.addEventListener("selectstart", () => {
       state.activeController = controller;
       controller.userData.laser.visible = true;
+      handleActionSelection();
     });
     scene.add(controller);
 
@@ -212,7 +215,7 @@ function buildTargets() {
       createLandoltGeometry(),
       new THREE.MeshBasicMaterial({ color: 0x0a0d12, side: THREE.DoubleSide })
     );
-    landolt.position.z = 0.05;
+    landolt.position.z = 0.08;
     landolt.rotation.z = directionToAngle(group.userData.direction);
     group.add(landolt);
     group.userData.landolt = landolt;
@@ -254,6 +257,22 @@ function buildImmersiveHud() {
   immersiveHud.position.set(0, 0.5, -1.65);
   immersiveHud.scale.set(1.45, 0.18, 1);
   camera.add(immersiveHud);
+
+  resultPanel = new THREE.Group();
+  resultPanel.position.set(0, -0.1, -2.2);
+  resultPanel.visible = false;
+  camera.add(resultPanel);
+
+  const resultText = makeTextSprite("", { width: 1024, height: 384, font: 54, color: "#f8fbff" });
+  resultText.position.set(0, 0.32, 0);
+  resultText.scale.set(1.65, 0.62, 1);
+  resultPanel.add(resultText);
+  resultPanel.userData.resultText = resultText;
+
+  const retryButton = createActionButton("Retry", "retry");
+  retryButton.position.set(0, -0.2, 0.02);
+  resultPanel.add(retryButton);
+  actionButtons.push(retryButton);
 }
 
 function startTraining() {
@@ -268,6 +287,7 @@ function startTraining() {
   state.timeLeft = TRAINING_SECONDS;
   resetTargets();
   overlay.style.display = "none";
+  resultPanel.visible = false;
   updateHud();
 }
 
@@ -277,6 +297,7 @@ function startTutorial() {
   state.timeLeft = TRAINING_SECONDS;
   resetTargets();
   overlay.style.display = "none";
+  resultPanel.visible = false;
   updateHud();
 }
 
@@ -406,6 +427,17 @@ function applyInput(direction) {
   updateHud();
 }
 
+function handleActionSelection() {
+  if (!resultPanel.visible || !renderer.xr.isPresenting) return;
+
+  updateControllerRaycaster(state.activeController);
+  const hits = raycaster.intersectObjects(actionButtons, false);
+  if (!hits.length) return;
+
+  const action = hits[0].object.userData.action;
+  if (action === "retry") startTraining();
+}
+
 function pollControllerInput(now) {
   if (!renderer.xr.isPresenting) return;
 
@@ -432,6 +464,14 @@ function pollControllerInput(now) {
 
     if (!direction) controller.userData.lastStickDirection = null;
   });
+}
+
+function updateControllerRaycaster(controller) {
+  if (!controller) return;
+  tempMatrix.identity().extractRotation(controller.matrixWorld);
+  rayOrigin.setFromMatrixPosition(controller.matrixWorld);
+  rayDirection.set(0, 0, -1).applyMatrix4(tempMatrix);
+  raycaster.set(rayOrigin, rayDirection);
 }
 
 function stickDirection(axes) {
@@ -488,6 +528,17 @@ function showResults() {
     `Score ${state.score} / Lv ${state.level} / Hit ${state.hits} / Combo ${state.combos} / Miss ${state.misses}`;
   startTrainingButton.textContent = "Retry";
   tutorialButton.textContent = "Tutorial";
+  updateTextSprite(
+    resultPanel.userData.resultText,
+    `Result\nScore ${state.score}\nLv ${state.level}  Hit ${state.hits}  Combo ${state.combos}  Miss ${state.misses}`,
+    {
+      width: 1024,
+      height: 384,
+      font: 54,
+      color: "#f8fbff"
+    }
+  );
+  resultPanel.visible = true;
 }
 
 function onKeyDown(event) {
@@ -533,6 +584,40 @@ function updateAcuityLabel(target) {
     font: 40,
     color: "#f8fbff"
   });
+}
+
+function createActionButton(label, action) {
+  const geometry = new THREE.PlaneGeometry(0.7, 0.22);
+  const material = new THREE.MeshBasicMaterial({
+    map: makeButtonTexture(label),
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+  const button = new THREE.Mesh(geometry, material);
+  button.userData.action = action;
+  button.name = `${action}Button`;
+  return button;
+}
+
+function makeButtonTexture(label) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 160;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#f4fbff";
+  roundRect(ctx, 16, 16, canvas.width - 32, canvas.height - 32, 18);
+  ctx.fill();
+  ctx.font = "800 58px Inter, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#071018";
+  ctx.fillText(label, canvas.width / 2, canvas.height / 2 + 3);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  return texture;
 }
 
 function updateBillboards() {
@@ -594,7 +679,12 @@ function makeTextTexture(text, { width, height, font, color }) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = color;
-  ctx.fillText(text, width / 2, height / 2 + 2);
+  const lines = String(text).split("\n");
+  const lineHeight = font * 1.18;
+  const startY = height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, index) => {
+    ctx.fillText(line, width / 2, startY + index * lineHeight + 2);
+  });
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter;
