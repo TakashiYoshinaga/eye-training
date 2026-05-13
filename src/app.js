@@ -625,7 +625,7 @@ function randomDirection(except = null) {
 
 function directionToAngle(direction) {
   if (direction === "right") return 0;
-  if (direction === "down") return Math.PI / 2;
+  if (direction === "up") return Math.PI / 2;
   if (direction === "left") return Math.PI;
   return -Math.PI / 2;
 }
