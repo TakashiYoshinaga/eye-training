@@ -387,7 +387,7 @@ function updateGame(delta) {
     }
   }
 
-  const speed = state.mode === "training" && state.running ? 0.22 + state.level * 0.08 : 0.045;
+  const speed = state.mode === "training" && state.running ? 0.22 + state.level * 0.1 : 0.045;
   targets.forEach((target) => {
     target.position.z = Math.min(LANE_Z_MIN, target.position.z + speed * delta);
     if (target.position.z >= LANE_Z_MIN - 0.01) {
