@@ -1,14 +1,14 @@
 # Eye Training WebXR
 
-Meta Quest Browserで動かす、pure JavaScript + Three.jsのWebXR視力トレーニング実験アプリです。
+Meta Quest Browserで動かすWebXR視力トレーニング実験アプリです。
+
+本アプリは、下記の参考論文の内容を検証するために再現した実装です。引用元の研究内容を尊重し、学術的な検証を目的としたものです。
 
 GitHub Pages:
 
 - https://takashiyoshinaga.github.io/eye-training/
 
-参考:
-
-- https://www.moguravr.com/vision-recovery-vr-game-research/
+参考論文:
 - https://www.interaction-ipsj.org/proceedings/2025/data/pdf/3B-50.pdf
 
 ## What it implements
