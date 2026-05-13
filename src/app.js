@@ -39,6 +39,7 @@ const state = {
 };
 
 const reusableCameraPosition = new THREE.Vector3();
+const reusableCameraDirection = new THREE.Vector3();
 const overlay = document.querySelector("#overlay");
 const startTrainingButton = document.querySelector("#startTraining");
 const tutorialButton = document.querySelector("#tutorialMode");
@@ -62,6 +63,13 @@ renderer.xr.enabled = true;
 renderer.xr.setFramebufferScaleFactor(XR_FRAMEBUFFER_SCALE);
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
+renderer.xr.addEventListener("sessionstart", resetForImmersiveEntry);
+renderer.xr.addEventListener("sessionend", () => {
+  immersiveUiAnchor.visible = false;
+  playPanel.visible = false;
+  resultPanel.visible = false;
+  overlay.style.display = "grid";
+});
 
 const controllerModelFactory = new XRControllerModelFactory();
 const raycaster = new THREE.Raycaster();
@@ -74,7 +82,9 @@ const controllers = [];
 const actionButtons = [];
 let mouseAiming = false;
 let mouseNdc = new THREE.Vector2();
+let immersiveUiAnchor = null;
 let immersiveHud = null;
+let playPanel = null;
 let resultPanel = null;
 
 buildLighting();
@@ -253,19 +263,35 @@ function buildWorldPanels() {
 }
 
 function buildImmersiveHud() {
-  immersiveHud = makeTextSprite("", { width: 1024, height: 128, font: 46, color: "#f8fbff" });
-  immersiveHud.position.set(0, 0.5, -1.65);
-  immersiveHud.scale.set(1.45, 0.18, 1);
-  camera.add(immersiveHud);
+  immersiveUiAnchor = new THREE.Group();
+  immersiveUiAnchor.visible = false;
+  scene.add(immersiveUiAnchor);
+
+  immersiveHud = makeTextPlane("", { width: 1024, height: 128, font: 46, color: "#f8fbff" }, 1.45, 0.18);
+  immersiveHud.position.set(0, 0.56, -1.55);
+  immersiveUiAnchor.add(immersiveHud);
+
+  playPanel = new THREE.Group();
+  playPanel.position.set(0, 0.96, -1.65);
+  playPanel.visible = false;
+  immersiveUiAnchor.add(playPanel);
+
+  const playText = makeTextPlane("Ready", { width: 1024, height: 192, font: 64, color: "#f8fbff" }, 1.55, 0.3);
+  playText.position.set(0, 0.22, 0);
+  playPanel.add(playText);
+
+  const playButton = createActionButton("Play", "play");
+  playButton.position.set(0, -0.1, 0.02);
+  playPanel.add(playButton);
+  actionButtons.push(playButton);
 
   resultPanel = new THREE.Group();
-  resultPanel.position.set(0, -0.1, -2.2);
+  resultPanel.position.set(0, 0.94, -1.75);
   resultPanel.visible = false;
-  camera.add(resultPanel);
+  immersiveUiAnchor.add(resultPanel);
 
-  const resultText = makeTextSprite("", { width: 1024, height: 384, font: 54, color: "#f8fbff" });
+  const resultText = makeTextPlane("", { width: 1024, height: 384, font: 54, color: "#f8fbff" }, 1.65, 0.62);
   resultText.position.set(0, 0.32, 0);
-  resultText.scale.set(1.65, 0.62, 1);
   resultPanel.add(resultText);
   resultPanel.userData.resultText = resultText;
 
@@ -276,6 +302,8 @@ function buildImmersiveHud() {
 }
 
 function startTraining() {
+  immersiveUiAnchor.visible = renderer.xr.isPresenting;
+  if (renderer.xr.isPresenting) placeImmersiveUiAtPlayerFeet();
   state.mode = "training";
   state.running = true;
   state.score = 0;
@@ -287,16 +315,39 @@ function startTraining() {
   state.timeLeft = TRAINING_SECONDS;
   resetTargets();
   overlay.style.display = "none";
+  playPanel.visible = false;
   resultPanel.visible = false;
   updateHud();
 }
 
 function startTutorial() {
+  immersiveUiAnchor.visible = renderer.xr.isPresenting;
   state.mode = "tutorial";
   state.running = false;
   state.timeLeft = TRAINING_SECONDS;
   resetTargets();
   overlay.style.display = "none";
+  playPanel.visible = renderer.xr.isPresenting;
+  resultPanel.visible = false;
+  updateHud();
+}
+
+function resetForImmersiveEntry() {
+  immersiveUiAnchor.visible = true;
+  placeImmersiveUiAtPlayerFeet();
+  state.mode = "tutorial";
+  state.running = false;
+  state.score = 0;
+  state.level = 1;
+  state.hits = 0;
+  state.combos = 0;
+  state.misses = 0;
+  state.streak = 0;
+  state.timeLeft = TRAINING_SECONDS;
+  state.aimed = null;
+  resetTargets();
+  overlay.style.display = "none";
+  playPanel.visible = true;
   resultPanel.visible = false;
   updateHud();
 }
@@ -428,13 +479,15 @@ function applyInput(direction) {
 }
 
 function handleActionSelection() {
-  if (!resultPanel.visible || !renderer.xr.isPresenting) return;
+  if ((!playPanel.visible && !resultPanel.visible) || !renderer.xr.isPresenting) return;
 
   updateControllerRaycaster(state.activeController);
-  const hits = raycaster.intersectObjects(actionButtons, false);
+  const visibleButtons = actionButtons.filter((button) => button.parent.visible);
+  const hits = raycaster.intersectObjects(visibleButtons, false);
   if (!hits.length) return;
 
   const action = hits[0].object.userData.action;
+  if (action === "play") startTraining();
   if (action === "retry") startTraining();
 }
 
@@ -456,7 +509,7 @@ function pollControllerInput(now) {
       direction &&
       (direction !== controller.userData.lastStickDirection || now - controller.userData.lastStickAt > 0.32);
 
-    if (canFire) {
+    if (canFire && !playPanel.visible && !resultPanel.visible) {
       applyInput(direction);
       controller.userData.lastStickDirection = direction;
       controller.userData.lastStickAt = now;
@@ -528,7 +581,10 @@ function showResults() {
     `Score ${state.score} / Lv ${state.level} / Hit ${state.hits} / Combo ${state.combos} / Miss ${state.misses}`;
   startTrainingButton.textContent = "Retry";
   tutorialButton.textContent = "Tutorial";
-  updateTextSprite(
+  immersiveUiAnchor.visible = renderer.xr.isPresenting;
+  if (renderer.xr.isPresenting) placeImmersiveUiAtPlayerFeet();
+  playPanel.visible = false;
+  updateTextPlane(
     resultPanel.userData.resultText,
     `Result\nScore ${state.score}\nLv ${state.level}  Hit ${state.hits}  Combo ${state.combos}  Miss ${state.misses}`,
     {
@@ -568,7 +624,7 @@ function updateHud() {
     state.mode === "training"
       ? `${formatTime(state.timeLeft)}   Lv ${state.level}   Score ${state.score}`
       : `Tutorial   Lv ${state.level}   Score ${state.score}`;
-  updateTextSprite(immersiveHud, immersiveText, {
+  updateTextPlane(immersiveHud, immersiveText, {
     width: 1024,
     height: 128,
     font: 46,
@@ -620,6 +676,17 @@ function makeButtonTexture(label) {
   return texture;
 }
 
+function placeImmersiveUiAtPlayerFeet() {
+  camera.getWorldPosition(reusableCameraPosition);
+  camera.getWorldDirection(reusableCameraDirection);
+  reusableCameraDirection.y = 0;
+  if (reusableCameraDirection.lengthSq() < 0.001) reusableCameraDirection.set(0, 0, -1);
+  reusableCameraDirection.normalize();
+
+  immersiveUiAnchor.position.set(reusableCameraPosition.x, 0, reusableCameraPosition.z);
+  immersiveUiAnchor.rotation.set(0, Math.atan2(-reusableCameraDirection.x, -reusableCameraDirection.z), 0);
+}
+
 function updateBillboards() {
   camera.getWorldPosition(reusableCameraPosition);
 
@@ -658,12 +725,28 @@ function makeTextSprite(text, options) {
   return sprite;
 }
 
+function makeTextPlane(text, options, widthMeters, heightMeters) {
+  const texture = makeTextTexture(text, options);
+  const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthMeters, heightMeters), material);
+  mesh.material.map.userData.text = text;
+  return mesh;
+}
+
 function updateTextSprite(sprite, text, options) {
   if (sprite.material.map.userData.text === text) return;
   sprite.material.map.dispose();
   sprite.material.map = makeTextTexture(text, options);
   sprite.material.map.userData.text = text;
   sprite.material.needsUpdate = true;
+}
+
+function updateTextPlane(mesh, text, options) {
+  if (mesh.material.map.userData.text === text) return;
+  mesh.material.map.dispose();
+  mesh.material.map = makeTextTexture(text, options);
+  mesh.material.map.userData.text = text;
+  mesh.material.needsUpdate = true;
 }
 
 function makeTextTexture(text, { width, height, font, color }) {
