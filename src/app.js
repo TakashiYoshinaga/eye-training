@@ -35,6 +35,7 @@ const state = {
   lastTime: 0
 };
 
+const reusableCameraPosition = new THREE.Vector3();
 const overlay = document.querySelector("#overlay");
 const startTrainingButton = document.querySelector("#startTraining");
 const tutorialButton = document.querySelector("#tutorialMode");
@@ -49,6 +50,7 @@ scene.fog = new THREE.Fog(0x06080d, 12, 40);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 80);
 camera.position.set(0, 1.62, 0.2);
+scene.add(camera);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -67,12 +69,14 @@ const targets = [];
 const controllers = [];
 let mouseAiming = false;
 let mouseNdc = new THREE.Vector2();
+let immersiveHud = null;
 
 buildLighting();
 buildRoom();
 buildControllers();
 buildTargets();
 buildWorldPanels();
+buildImmersiveHud();
 updateHud();
 
 renderer.setAnimationLoop(render);
@@ -238,6 +242,13 @@ function buildWorldPanels() {
   title.position.set(0, 2.95, -4.2);
   title.scale.set(4.2, 0.52, 1);
   scene.add(title);
+}
+
+function buildImmersiveHud() {
+  immersiveHud = makeTextSprite("", { width: 1024, height: 128, font: 46, color: "#f8fbff" });
+  immersiveHud.position.set(0, 0.5, -1.65);
+  immersiveHud.scale.set(1.45, 0.18, 1);
+  camera.add(immersiveHud);
 }
 
 function startTraining() {
@@ -496,6 +507,17 @@ function updateHud() {
   timeLabel.textContent = state.mode === "training" ? formatTime(state.timeLeft) : "--";
   levelLabel.textContent = `Lv ${state.level}`;
   scoreLabel.textContent = `Score ${state.score}`;
+
+  const immersiveText =
+    state.mode === "training"
+      ? `${formatTime(state.timeLeft)}   Lv ${state.level}   Score ${state.score}`
+      : `Tutorial   Lv ${state.level}   Score ${state.score}`;
+  updateTextSprite(immersiveHud, immersiveText, {
+    width: 1024,
+    height: 128,
+    font: 46,
+    color: "#f8fbff"
+  });
 }
 
 function updateAcuityLabel(target) {
@@ -509,12 +531,11 @@ function updateAcuityLabel(target) {
 }
 
 function updateBillboards() {
-  const cameraPosition = new THREE.Vector3();
-  camera.getWorldPosition(cameraPosition);
+  camera.getWorldPosition(reusableCameraPosition);
 
   targets.forEach((target) => {
-    const dx = cameraPosition.x - target.position.x;
-    const dz = cameraPosition.z - target.position.z;
+    const dx = reusableCameraPosition.x - target.position.x;
+    const dz = reusableCameraPosition.z - target.position.z;
     target.rotation.set(0, Math.atan2(dx, dz), 0);
   });
 }
@@ -527,21 +548,24 @@ function updateLandolt(target) {
 
 function createLandoltTexture(direction) {
   const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 256;
+  canvas.width = 1024;
+  canvas.height = 1024;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.translate(128, 128);
+  ctx.translate(512, 512);
   ctx.rotate(directionToAngle(direction));
   ctx.strokeStyle = "#0a0d12";
-  ctx.lineWidth = 42;
+  ctx.lineWidth = 168;
   ctx.lineCap = "butt";
   ctx.beginPath();
-  ctx.arc(0, 0, 72, 0.62, Math.PI * 2 - 0.62, false);
+  ctx.arc(0, 0, 288, 0.62, Math.PI * 2 - 0.62, false);
   ctx.stroke();
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = 8;
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
   return texture;
 }
 
